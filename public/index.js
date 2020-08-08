@@ -18,7 +18,7 @@ function useIndexedDb(databaseName, storeName, method, object) {
 
     request.onupgradeneeded = function(e) {
       const db = request.result;
-      db.createObjectStore(storeName, { keyPath: "_id" });
+      db.createObjectStore(storeName, { keyPath: "_id", autoIncrement: true });
     };
 
     request.onerror = function(e) {
