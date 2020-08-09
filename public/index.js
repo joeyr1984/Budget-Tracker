@@ -1,6 +1,10 @@
 let transactions = [];
 let myChart;
+let nameEl = document.querySelector("#t-name");
+let amountEl = document.querySelector("#t-amount");
+let errorEl = document.querySelector(".form .error");
 
+offlineTransaction();
 function checkForIndexedDb() {
   if (!window.indexedDB) {
     console.log("Your browser doesn't support a stable version of IndexedDB.");
@@ -16,28 +20,28 @@ function useIndexedDb(databaseName, storeName, method, object) {
       tx,
       store;
 
-    request.onupgradeneeded = function(e) {
+    request.onupgradeneeded = function (e) {
       const db = request.result;
       db.createObjectStore(storeName, { keyPath: "_id", autoIncrement: true });
     };
 
-    request.onerror = function(e) {
+    request.onerror = function (e) {
       console.log("There was an error");
     };
 
-    request.onsuccess = function(e) {
+    request.onsuccess = function (e) {
       db = request.result;
       tx = db.transaction(storeName, "readwrite");
       store = tx.objectStore(storeName);
 
-      db.onerror = function(e) {
+      db.onerror = function (e) {
         console.log("error");
       };
       if (method === "put") {
         store.put(object);
       } else if (method === "get") {
         const all = store.getAll();
-        all.onsuccess = function() {
+        all.onsuccess = function () {
           resolve(all.result);
         };
       } else if (method === "delete") {
@@ -45,14 +49,19 @@ function useIndexedDb(databaseName, storeName, method, object) {
       } else if (method === "add") {
         console.log(store, object);
         const objRequest = store.add(object);
-        objRequest.onsuccess = function(event){
+        objRequest.onsuccess = function (event) {
           console.log("success", event);
         }
-        objRequest.onerror = function(event){
+        objRequest.onerror = function (event) {
           console.log("error", event);
         }
+      } else if (method === "clear") {
+        const empty = store.clear();
+        empty.onsuccess = function () {
+          console.log("success");
+        };
       }
-      tx.oncomplete = function() {
+      tx.oncomplete = function () {
         db.close();
       };
     };
@@ -139,13 +148,11 @@ function populateChart() {
 function saveRecord(transaction) {
   if (checkForIndexedDb()) {
 
-    useIndexedDb("transactions", "TransactionStore" , "add", transaction).then(() => { console.log("added to DB"); })
+    useIndexedDb("transaction", "TransactionStore", "add", transaction).then(() => { console.log("added to DB"); })
   }
 }
 function sendTransaction(isAdding) {
-  let nameEl = document.querySelector("#t-name");
-  let amountEl = document.querySelector("#t-amount");
-  let errorEl = document.querySelector(".form .error");
+
 
   // validate form
   if (nameEl.value === "" || amountEl.value === "") {
@@ -200,8 +207,9 @@ function sendTransaction(isAdding) {
     })
     .catch(err => {
       // fetch failed, so save in indexed db
-      saveRecord(transaction);
-
+      if (navigator.onLine === false) {
+        saveRecord(transaction);
+      }
       // clear form
       nameEl.value = "";
       amountEl.value = "";
@@ -215,3 +223,42 @@ document.querySelector("#add-btn").onclick = function () {
 document.querySelector("#sub-btn").onclick = function () {
   sendTransaction(false);
 };
+function offlineTransaction() {
+  if (navigator.onLine === true) {
+    if (checkForIndexedDb()) {
+      useIndexedDb("transaction", "TransactionStore", "get").then(results => {
+       console.log(results);
+        if (results.length > 0) {
+          fetch("/api/transaction/bulk", {
+            method: "POST",
+            body: JSON.stringify(results),
+            headers: {
+              Accept: "application/json, text/plain, */*",
+              "Content-Type": "application/json"
+            }
+          })
+            .then(response => {
+              return response.json();
+            })
+            .then(data => {
+              if (data.errors) {
+                errorEl.textContent = "Missing Information";
+              }
+              else {
+                // clear form
+                nameEl.value = "";
+                amountEl.value = "";
+              }
+            })
+
+            .then(function () {
+              useIndexedDb("transaction", "TransactionStore", "clear").then(() => {
+                console.log("clear is done");
+              });
+            })
+        }
+
+      });
+    }
+  }
+}
